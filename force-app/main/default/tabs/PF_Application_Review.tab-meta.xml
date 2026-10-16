@@ -2,6 +2,6 @@
 <CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
     <description>Platypus Finance Manager Application Review &amp; Decision Console</description>
     <flexiPage>PF_Application_Review</flexiPage>
-    <label>Application Review</label>
+    <label>Loan Application Review</label>
     <motif>Custom83: Pencil</motif>
 </CustomTab>

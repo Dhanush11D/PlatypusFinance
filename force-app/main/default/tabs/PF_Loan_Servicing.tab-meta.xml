@@ -2,6 +2,6 @@
 <CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
     <description>Platypus Finance Cashier Payment &amp; Servicing Desk</description>
     <flexiPage>PF_Loan_Servicing</flexiPage>
-    <label>Payment Servicing</label>
+    <label>Loan Servicing</label>
     <motif>Custom41: Cash register</motif>
 </CustomTab>

@@ -2,6 +2,6 @@
 <CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
     <description>Platypus Finance Loan Application Creation Portal</description>
     <flexiPage>PF_New_Application</flexiPage>
-    <label>New Application</label>
+    <label>New Loan Application</label>
     <motif>Custom40: Compass</motif>
 </CustomTab>
