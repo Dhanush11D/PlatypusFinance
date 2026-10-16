@@ -1,0 +1,131 @@
+<template>
+    <div class="page-shell">
+        <div class="hero">
+            <div class="hero-icon">
+                <lightning-icon
+                    icon-name="standard:account"
+                    size="medium"
+                    alternative-text="Customer">
+                </lightning-icon>
+            </div>
+            <div>
+                <p class="eyebrow">PLATYPUS FINANCE</p>
+                <h1>New Loan Application</h1>
+                <p class="subtitle">
+                    Capture customer details and submit a loan request.
+                </p>
+            </div>
+        </div>
+
+        <div class="form-card">
+            <div class="section-heading">
+                <span class="step-number">01</span>
+                <div>
+                    <h2>Applicant Information</h2>
+                    <p>Select the customer applying for the loan.</p>
+                </div>
+            </div>
+
+            <div class="field-grid">
+                <lightning-record-picker
+                    label="Customer Account"
+                    placeholder="Search customer accounts..."
+                    object-api-name="Account"
+                    onchange={handleAccountChange}
+                    required>
+                </lightning-record-picker>
+
+                <lightning-record-picker
+                    label="Applicant Contact"
+                    placeholder="Search contacts..."
+                    object-api-name="Contact"
+                    filter={contactFilter}
+                    onchange={handleContactChange}
+                    required>
+                </lightning-record-picker>
+            </div>
+
+            <div class="section-heading second-section">
+                <span class="step-number">02</span>
+                <div>
+                    <h2>Loan Requirements</h2>
+                    <p>Enter the requested loan details.</p>
+                </div>
+            </div>
+
+            <div class="field-grid">
+                <lightning-combobox
+                    name="segment"
+                    label="Loan Segment"
+                    value={loanSegment}
+                    options={segmentOptions}
+                    onchange={handleInputChange}
+                    required>
+                </lightning-combobox>
+
+                <lightning-input
+                    name="amount"
+                    type="number"
+                    label="Requested Amount (₹)"
+                    value={amount}
+                    min="10000"
+                    max="500000"
+                    step="0.01"
+                    formatter="currency"
+                    onchange={handleInputChange}
+                    required>
+                </lightning-input>
+
+                <lightning-input
+                    name="tenure"
+                    type="number"
+                    label="Tenure (Months)"
+                    value={tenure}
+                    min="3"
+                    max="53"
+                    step="1"
+                    onchange={handleInputChange}
+                    required>
+                </lightning-input>
+
+                <lightning-combobox
+                    name="purpose"
+                    label="Purpose of Loan"
+                    value={purpose}
+                    options={purposeOptions}
+                    onchange={handleInputChange}
+                    required>
+                </lightning-combobox>
+            </div>
+
+            <div class="info-panel">
+                <lightning-icon
+                    icon-name="utility:info"
+                    size="small"
+                    alternative-text="Information">
+                </lightning-icon>
+                <p>
+                    The requested amount must be between ₹10,000 and ₹5,00,000.
+                    Tenure must be between 3 and 53 months. Final eligibility
+                    and approval are subject to the company's business rules.
+                </p>
+            </div>
+
+            <div class="footer-actions">
+                <lightning-button
+                    label="Reset Form"
+                    variant="neutral"
+                    onclick={handleReset}>
+                </lightning-button>
+
+                <lightning-button
+                    label="Submit Application"
+                    variant="brand"
+                    icon-name="utility:send"
+                    onclick={handleSubmit}
+                    disabled={isSubmitting}>
+                </lightning-button>
+            </div>
+        </div>
+    </div>
+</template>
