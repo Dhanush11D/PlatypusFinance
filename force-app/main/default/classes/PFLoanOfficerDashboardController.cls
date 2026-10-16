@@ -1,4 +1,4 @@
-public without sharing class PFLoanOfficerDashboardController {
+public with sharing class PFLoanOfficerDashboardController {
 
     public class DashboardMetrics {
         @AuraEnabled public Integer totalApplications { get; set; }
@@ -20,6 +20,8 @@ public without sharing class PFLoanOfficerDashboardController {
 
     @AuraEnabled(cacheable=true)
     public static DashboardMetrics getDashboardMetrics() {
+        requireReadAccess();
+
         DashboardMetrics result = new DashboardMetrics();
         result.totalApplications = 0;
         result.pendingReview = 0;
@@ -32,6 +34,7 @@ public without sharing class PFLoanOfficerDashboardController {
                    COUNT(Id) recordCount,
                    SUM(Requested_Amount__c) requestedTotal
             FROM Loan_Application__c
+            WITH USER_MODE
             GROUP BY Application_Status__c
         ]) {
             Integer countValue = (Integer) item.get('recordCount');
@@ -59,6 +62,8 @@ public without sharing class PFLoanOfficerDashboardController {
 
     @AuraEnabled(cacheable=true)
     public static List<ApplicationRow> getRecentApplications() {
+        requireReadAccess();
+
         List<ApplicationRow> results = new List<ApplicationRow>();
 
         for (Loan_Application__c application : [
@@ -66,6 +71,7 @@ public without sharing class PFLoanOfficerDashboardController {
                    Loan_Segment__c, Requested_Amount__c,
                    Application_Status__c, Application_Date__c
             FROM Loan_Application__c
+            WITH USER_MODE
             ORDER BY CreatedDate DESC
             LIMIT 10
         ]) {
@@ -83,5 +89,13 @@ public without sharing class PFLoanOfficerDashboardController {
         }
 
         return results;
+    }
+
+    private static void requireReadAccess() {
+        if (!Schema.sObjectType.Loan_Application__c.isAccessible()) {
+            throw new AuraHandledException(
+                'You do not have permission to view loan applications.'
+            );
+        }
     }
 }
