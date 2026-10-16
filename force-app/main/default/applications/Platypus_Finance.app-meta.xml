@@ -15,12 +15,16 @@
     <isOmniPinnedViewEnabled>false</isOmniPinnedViewEnabled>
     <label>Platypus Finance</label>
     <navType>Standard</navType>
-    <tabs>standard-home</tabs>
-    <tabs>standard-Account</tabs>
-    <tabs>standard-Contact</tabs>
+    <tabs>Platypus_Finance_Dashboard</tabs>
+    <tabs>PF_New_Application</tabs>
+    <tabs>PF_Application_Review</tabs>
+    <tabs>PF_Loan_Disbursement</tabs>
+    <tabs>PF_Loan_Servicing</tabs>
     <tabs>Loan_Application__c</tabs>
     <tabs>Loan__c</tabs>
     <tabs>Loan_Payment__c</tabs>
+    <tabs>standard-Account</tabs>
+    <tabs>standard-Contact</tabs>
     <tabs>standard-report</tabs>
     <tabs>standard-Dashboard</tabs>
     <uiType>Lightning</uiType>

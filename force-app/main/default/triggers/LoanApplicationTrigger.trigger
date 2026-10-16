@@ -2,6 +2,9 @@ trigger LoanApplicationTrigger on Loan_Application__c (
     before insert,
     before update
 ) {
+    if (LoanApplicationTriggerHandler.bypassTrigger) {
+        return;
+    }
     Set<Id> accountIds = new Set<Id>();
     Set<Id> contactIds = new Set<Id>();
 
@@ -126,8 +129,9 @@ trigger LoanApplicationTrigger on Loan_Application__c (
                 Account customer =
                     accountsById.get(application.Customer_Account__c);
 
-                if (customer.Customer_Status__c == 'Blocked' ||
-                    customer.Customer_Status__c == 'Inactive') {
+                if ((customer.Customer_Status__c == 'Blocked' ||
+                     customer.Customer_Status__c == 'Inactive') &&
+                    application.Eligibility_Status__c != 'Ineligible') {
                     application.Customer_Account__c.addError(
                         'Applications cannot proceed for Blocked or Inactive customers.'
                     );

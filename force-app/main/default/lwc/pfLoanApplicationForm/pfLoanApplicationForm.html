@@ -26,11 +26,16 @@
                 </div>
             </div>
 
+            <template if:true={isSubmitting}>
+                <lightning-spinner alternative-text="Submitting application..." size="medium"></lightning-spinner>
+            </template>
+
             <div class="field-grid">
                 <lightning-record-picker
                     label="Customer Account"
                     placeholder="Search customer accounts..."
                     object-api-name="Account"
+                    value={accountId}
                     onchange={handleAccountChange}
                     required>
                 </lightning-record-picker>
@@ -39,6 +44,7 @@
                     label="Applicant Contact"
                     placeholder="Search contacts..."
                     object-api-name="Contact"
+                    value={contactId}
                     filter={contactFilter}
                     onchange={handleContactChange}
                     required>

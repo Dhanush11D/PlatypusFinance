@@ -3,6 +3,8 @@ public with sharing class LoanPaymentService {
     public class InvalidPaymentException extends Exception {}
     public class PaymentAuthorizationException extends Exception {}
 
+    public static Boolean isServiceProcessing = false;
+
     private static final Set<String> VALID_METHODS =
         new Set<String>{
             'Cash', 'UPI', 'Bank Transfer',
@@ -20,6 +22,7 @@ public with sharing class LoanPaymentService {
     // Recording a payment does not change the loan balance.
     // =========================================================
 
+    @AuraEnabled
     public static Id recordPayment(
         Id loanId,
         Decimal amount,
@@ -97,6 +100,7 @@ public with sharing class LoanPaymentService {
     // Only this method updates financial totals.
     // =========================================================
 
+    @AuraEnabled
     public static void markPaymentSuccessful(Id paymentId) {
         if (paymentId == null) {
             throw new InvalidPaymentException(
@@ -172,8 +176,13 @@ public with sharing class LoanPaymentService {
 
         payment.Payment_Status__c = 'Successful';
 
-        update loan;
-        update payment;
+        isServiceProcessing = true;
+        try {
+            update loan;
+            update payment;
+        } finally {
+            isServiceProcessing = false;
+        }
     }
 
     // =========================================================
@@ -181,6 +190,7 @@ public with sharing class LoanPaymentService {
     // Restores the balance and removes the payment from totals.
     // =========================================================
 
+    @AuraEnabled
     public static void reversePayment(
         Id paymentId,
         String reversalReason
@@ -256,14 +266,20 @@ public with sharing class LoanPaymentService {
                 existingNotes + '\n' + reversalNote;
         }
 
-        update loan;
-        update payment;
+        isServiceProcessing = true;
+        try {
+            update loan;
+            update payment;
+        } finally {
+            isServiceProcessing = false;
+        }
     }
 
     // =========================================================
     // RETRIEVE A PAYMENT
     // =========================================================
 
+    @AuraEnabled(cacheable=true)
     public static Loan_Payment__c getPayment(Id paymentId) {
         if (paymentId == null) {
             throw new InvalidPaymentException(
@@ -301,6 +317,7 @@ public with sharing class LoanPaymentService {
     // GET PAYMENTS FOR A LOAN
     // =========================================================
 
+    @AuraEnabled(cacheable=true)
     public static List<Loan_Payment__c> getLoanPayments(Id loanId) {
         if (loanId == null) {
             throw new InvalidPaymentException(
@@ -324,6 +341,30 @@ public with sharing class LoanPaymentService {
             WHERE Loan__c = :loanId
             ORDER BY Payment_Date__c DESC, CreatedDate DESC
             LIMIT 200
+        ];
+    }
+
+    // =========================================================
+    // SEARCH ACTIVE LOANS (FOR CASHIER SERVICING)
+    // =========================================================
+
+    @AuraEnabled(cacheable=true)
+    public static List<Loan__c> searchActiveLoans(String searchTerm) {
+        String filterPattern = '%' + (String.isBlank(searchTerm) ? '' : searchTerm.trim()) + '%';
+        return [
+            SELECT Id, Name, Customer_Account__c, Customer_Account__r.Name,
+                   Borrower_Contact__c, Borrower_Contact__r.Name,
+                   Principal_Amount__c, Annual_Interest_Rate__c,
+                   Tenure_Months__c, Loan_Status__c, Monthly_Installment__c,
+                   Outstanding_Balance__c, Total_Amount_Paid__c,
+                   Next_Payment_Due_Date__c, Disbursement_Date__c
+            FROM Loan__c
+            WHERE Loan_Status__c = 'Active'
+              AND (Name LIKE :filterPattern
+                   OR Customer_Account__r.Name LIKE :filterPattern
+                   OR Borrower_Contact__r.Name LIKE :filterPattern)
+            ORDER BY Name ASC
+            LIMIT 50
         ];
     }
 

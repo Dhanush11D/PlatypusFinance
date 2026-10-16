@@ -1,0 +1,447 @@
+<template>
+    <div class="repayment-container">
+        <!-- TOP HEADER -->
+        <header class="repayment-header">
+            <div class="header-main">
+                <div class="header-badge">
+                    <lightning-icon icon-name="standard:service_contract" size="small" alternative-text="Servicing"></lightning-icon>
+                </div>
+                <div>
+                    <h1 class="header-title">Loan Servicing & Payment Desk</h1>
+                    <p class="header-subtitle">
+                        Cashier operations: search active customer loans, record installments, process settlements, and manage payment reversals.
+                    </p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <template lwc:if={selectedLoan}>
+                    <lightning-button
+                        label="Change Loan / Search"
+                        icon-name="utility:search"
+                        variant="neutral"
+                        onclick={handleClearSelection}>
+                    </lightning-button>
+                </template>
+                <lightning-button
+                    label="Refresh"
+                    icon-name="utility:refresh"
+                    variant="neutral"
+                    onclick={handleRefresh}>
+                </lightning-button>
+            </div>
+        </header>
+
+        <!-- SPINNER -->
+        <template lwc:if={isLoading}>
+            <div class="spinner-container">
+                <lightning-spinner alternative-text="Processing transaction" size="medium"></lightning-spinner>
+                <p class="spinner-text">Updating financial ledgers and balances…</p>
+            </div>
+        </template>
+
+        <!-- SEARCH & SELECTION BAR -->
+        <div class="search-section">
+            <div class="search-bar-wrap">
+                <lightning-input
+                    type="search"
+                    placeholder="Search by Loan ID (e.g. LN-00001), Customer Name, or Borrower Name…"
+                    value={searchTerm}
+                    onchange={handleSearchChange}>
+                </lightning-input>
+            </div>
+        </div>
+
+        <!-- VIEW 1: ACTIVE LOANS TABLE (When no loan selected) -->
+        <template lwc:if={showLoanSelection}>
+            <div class="queue-panel">
+                <div class="queue-header-row">
+                    <div>
+                        <h2 class="section-title">Active Loans for Servicing</h2>
+                        <p class="section-subtitle">Select a loan to view ledger balance and accept repayments.</p>
+                    </div>
+                    <div class="queue-stats">
+                        <span class="badge badge-active">{activeLoans.length} Active Loans</span>
+                    </div>
+                </div>
+
+                <template lwc:if={hasActiveLoans}>
+                    <div class="table-responsive">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered custom-table">
+                            <thead>
+                                <tr>
+                                    <th>LOAN ID</th>
+                                    <th>CUSTOMER / BORROWER</th>
+                                    <th>PRINCIPAL</th>
+                                    <th>OUTSTANDING BALANCE</th>
+                                    <th>MONTHLY EMI</th>
+                                    <th>NEXT DUE DATE</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={activeLoans} for:item="loan">
+                                    <tr key={loan.Id}>
+                                        <td class="font-bold text-primary">{loan.Name}</td>
+                                        <td>
+                                            <div class="customer-cell">
+                                                <span class="font-semibold">{loan.Customer_Account__r.Name}</span>
+                                                <span class="text-muted text-xs">{loan.Borrower_Contact__r.Name}</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount-cell">
+                                            <lightning-formatted-number
+                                                value={loan.Principal_Amount__c}
+                                                format-style="currency"
+                                                currency-code="INR"
+                                                maximum-fraction-digits="0">
+                                            </lightning-formatted-number>
+                                        </td>
+                                        <td class="amount-cell text-accent font-bold">
+                                            <lightning-formatted-number
+                                                value={loan.Outstanding_Balance__c}
+                                                format-style="currency"
+                                                currency-code="INR"
+                                                maximum-fraction-digits="2">
+                                            </lightning-formatted-number>
+                                        </td>
+                                        <td>
+                                            <lightning-formatted-number
+                                                value={loan.Monthly_Installment__c}
+                                                format-style="currency"
+                                                currency-code="INR"
+                                                maximum-fraction-digits="2">
+                                            </lightning-formatted-number>
+                                        </td>
+                                        <td>
+                                            <lightning-formatted-date-time
+                                                value={loan.Next_Payment_Due_Date__c}
+                                                year="numeric"
+                                                month="short"
+                                                day="2-digit">
+                                            </lightning-formatted-date-time>
+                                        </td>
+                                        <td>
+                                            <button
+                                                class="btn-select-loan"
+                                                data-id={loan.Id}
+                                                onclick={handleSelectLoan}>
+                                                Collect Payment &rarr;
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <div class="empty-state">
+                        <lightning-icon icon-name="utility:search" size="large"></lightning-icon>
+                        <h3>No Active Loans Found</h3>
+                        <p>No active loans match your search criteria. Check spelling or ensure loans have been disbursed.</p>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- VIEW 2: SERVICING WORKSPACE FOR SELECTED LOAN -->
+        <template lwc:if={selectedLoan}>
+            <div class="servicing-grid">
+                <!-- LEFT COLUMN: LOAN FINANCIAL OVERVIEW & LEDGER -->
+                <div class="ledger-column">
+                    <!-- BALANCE HERO CARD -->
+                    <div class="balance-hero-card">
+                        <div class="balance-header-row">
+                            <div>
+                                <span class="hero-label">CURRENT OUTSTANDING BALANCE</span>
+                                <div class="hero-amount">
+                                    <lightning-formatted-number
+                                        value={selectedLoan.Outstanding_Balance__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="2">
+                                    </lightning-formatted-number>
+                                </div>
+                            </div>
+                            <div class="status-wrap">
+                                <span class={loanStatusClass}>{selectedLoan.Loan_Status__c}</span>
+                            </div>
+                        </div>
+
+                        <div class="hero-stats-grid">
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Contract Reference</span>
+                                <span class="stat-val font-bold">{selectedLoan.Name}</span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Customer Name</span>
+                                <span class="stat-val">{selectedLoan.Customer_Account__r.Name}</span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Borrower Contact</span>
+                                <span class="stat-val">{selectedLoan.Borrower_Contact__r.Name}</span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Disbursed Principal</span>
+                                <span class="stat-val">
+                                    <lightning-formatted-number
+                                        value={selectedLoan.Principal_Amount__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="0">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Total Repaid to Date</span>
+                                <span class="stat-val text-success font-bold">
+                                    <lightning-formatted-number
+                                        value={selectedLoan.Total_Amount_Paid__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="2">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Regular EMI</span>
+                                <span class="stat-val font-semibold">
+                                    <lightning-formatted-number
+                                        value={selectedLoan.Monthly_Installment__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="2">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Next Due Date</span>
+                                <span class="stat-val font-bold text-accent">
+                                    <lightning-formatted-date-time
+                                        value={selectedLoan.Next_Payment_Due_Date__c}
+                                        year="numeric"
+                                        month="short"
+                                        day="2-digit">
+                                    </lightning-formatted-date-time>
+                                </span>
+                            </div>
+                            <div class="hero-stat-box">
+                                <span class="stat-lbl">Interest Rate</span>
+                                <span class="stat-val">{selectedLoan.Annual_Interest_Rate__c}% p.a.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PAYMENT HISTORY TABLE -->
+                    <div class="history-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:table" size="x-small"></lightning-icon>
+                            <h3>Transaction & Repayment History</h3>
+                        </div>
+
+                        <template lwc:if={hasPayments}>
+                            <div class="table-responsive">
+                                <table class="slds-table slds-table_cell-buffer slds-table_bordered custom-table">
+                                    <thead>
+                                        <tr>
+                                            <th>RECEIPT #</th>
+                                            <th>DATE</th>
+                                            <th>AMOUNT</th>
+                                            <th>METHOD</th>
+                                            <th>TYPE</th>
+                                            <th>REF #</th>
+                                            <th>STATUS</th>
+                                            <th>ACTIONS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={payments} for:item="payment">
+                                            <tr key={payment.Id}>
+                                                <td class="font-bold">{payment.Name}</td>
+                                                <td>
+                                                    <lightning-formatted-date-time
+                                                        value={payment.Payment_Date__c}
+                                                        year="numeric"
+                                                        month="short"
+                                                        day="2-digit">
+                                                    </lightning-formatted-date-time>
+                                                </td>
+                                                <td class="amount-cell">
+                                                    <lightning-formatted-number
+                                                        value={payment.Payment_Amount__c}
+                                                        format-style="currency"
+                                                        currency-code="INR"
+                                                        maximum-fraction-digits="2">
+                                                    </lightning-formatted-number>
+                                                </td>
+                                                <td>{payment.Payment_Method__c}</td>
+                                                <td><span class="type-tag">{payment.Payment_Type__c}</span></td>
+                                                <td class="text-xs text-muted">{payment.Transaction_Reference__c}</td>
+                                                <td>
+                                                    <span class={payment.statusBadgeClass}>{payment.Payment_Status__c}</span>
+                                                </td>
+                                                <td>
+                                                    <template lwc:if={payment.isPending}>
+                                                        <button
+                                                            class="btn-action-sm btn-success-sm"
+                                                            data-id={payment.Id}
+                                                            onclick={handleMarkSuccessful}>
+                                                            Confirm
+                                                        </button>
+                                                    </template>
+                                                    <template lwc:if={payment.isSuccessful}>
+                                                        <button
+                                                            class="btn-action-sm btn-danger-sm"
+                                                            data-id={payment.Id}
+                                                            onclick={handleOpenReverseModal}>
+                                                            Reverse
+                                                        </button>
+                                                    </template>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
+                        <template lwc:else>
+                            <div class="empty-mini">
+                                <p>No payment transactions recorded for this loan yet.</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: CASHIER PAYMENT ENTRY FORM -->
+                <div class="payment-form-column">
+                    <div class="action-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:money" size="small"></lightning-icon>
+                            <div>
+                                <h3>Record Payment Transaction</h3>
+                                <p class="card-caption">Post verified customer funds against contract ledger</p>
+                            </div>
+                        </div>
+
+                        <div class="form-body">
+                            <div class="quick-amounts-bar">
+                                <button class="chip-btn" onclick={handleSetEmiAmount}>
+                                    Set EMI: ₹{selectedLoan.Monthly_Installment__c}
+                                </button>
+                                <button class="chip-btn chip-accent" onclick={handleSetFullBalance}>
+                                    Full Settlement: ₹{selectedLoan.Outstanding_Balance__c}
+                                </button>
+                            </div>
+
+                            <lightning-input
+                                type="number"
+                                label="Payment Amount (₹)"
+                                value={paymentAmount}
+                                formatter="currency"
+                                step="0.01"
+                                min="1"
+                                max={selectedLoan.Outstanding_Balance__c}
+                                onchange={handleAmountChange}
+                                required>
+                            </lightning-input>
+
+                            <lightning-input
+                                type="date"
+                                label="Payment Date"
+                                value={paymentDate}
+                                max={todayDate}
+                                onchange={handleDateChange}
+                                required>
+                            </lightning-input>
+
+                            <div class="form-row-2">
+                                <lightning-combobox
+                                    label="Payment Method"
+                                    value={paymentMethod}
+                                    options={methodOptions}
+                                    onchange={handleMethodChange}
+                                    required>
+                                </lightning-combobox>
+
+                                <lightning-combobox
+                                    label="Payment Type"
+                                    value={paymentType}
+                                    options={typeOptions}
+                                    onchange={handleTypeChange}
+                                    required>
+                                </lightning-combobox>
+                            </div>
+
+                            <lightning-input
+                                type="text"
+                                label="Transaction Reference / Cheque / UTR #"
+                                placeholder="e.g. UPI/123456789 or CHQ-48291"
+                                value={transactionReference}
+                                onchange={handleReferenceChange}>
+                            </lightning-input>
+
+                            <lightning-textarea
+                                label="Payment Notes / Teller Remarks"
+                                placeholder="Optional receipt or cashier observations..."
+                                value={paymentNotes}
+                                onchange={handleNotesChange}>
+                            </lightning-textarea>
+
+                            <div class="alert-box alert-info">
+                                <lightning-icon icon-name="utility:info" size="xx-small"></lightning-icon>
+                                <span class="text-xs">
+                                    Instant balance reconciliation: Posting directly marks the payment <strong>Successful</strong> and updates the loan balance and next due date in one atomic transaction.
+                                </span>
+                            </div>
+
+                            <div class="form-buttons">
+                                <button class="btn btn-primary btn-block" onclick={handleRecordAndComplete}>
+                                    <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
+                                    Process & Confirm Repayment
+                                </button>
+                                <button class="btn btn-outline btn-block" onclick={handleRecordPendingOnly}>
+                                    Record as Pending (Draft / Cheque Clearance)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- REVERSAL MODAL -->
+        <template lwc:if={showReverseModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container modal-wrap">
+                    <header class="slds-modal__header modal-head-danger">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={handleCloseReverseModal}>
+                            <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium font-bold text-white">Confirm Payment Reversal</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <div class="alert-box alert-warning">
+                            <lightning-icon icon-name="utility:warning" size="small"></lightning-icon>
+                            <span class="text-xs">
+                                <strong>Financial Restitution:</strong> Reversing this transaction will restore the loan's outstanding balance by <strong>₹{selectedPaymentAmount}</strong>. If the loan was previously marked Closed, it will automatically be reopened to <strong>Active</strong>.
+                            </span>
+                        </div>
+                        <lightning-textarea
+                            label="Mandatory Reversal Reason"
+                            placeholder="Enter detailed audit reason for reversing this payment (e.g., bounced cheque, duplicated transaction)..."
+                            value={reversalReason}
+                            onchange={handleReversalReasonChange}
+                            required>
+                        </lightning-textarea>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <button class="btn btn-neutral" onclick={handleCloseReverseModal}>Cancel</button>
+                        <button class="btn btn-danger" onclick={handleConfirmReverse}>Confirm & Restore Balance</button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

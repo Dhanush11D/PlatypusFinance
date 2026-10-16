@@ -1,0 +1,322 @@
+<template>
+    <div class="disbursement-container">
+        <!-- TOP HEADER -->
+        <header class="disbursement-header">
+            <div class="header-main">
+                <div class="header-badge">
+                    <lightning-icon icon-name="standard:currency" size="small" alternative-text="Disbursement"></lightning-icon>
+                </div>
+                <div>
+                    <h1 class="header-title">Loan Disbursement Console</h1>
+                    <p class="header-subtitle">
+                        Disburse approved credit facilities, establish repayment schedules, and generate active loan contracts.
+                    </p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <template lwc:if={selectedApplication}>
+                    <lightning-button
+                        label="Approved Queue"
+                        icon-name="utility:list"
+                        variant="neutral"
+                        onclick={handleBackToApprovedList}>
+                    </lightning-button>
+                </template>
+                <lightning-button
+                    label="Refresh Approved List"
+                    icon-name="utility:refresh"
+                    variant="neutral"
+                    onclick={handleRefresh}>
+                </lightning-button>
+            </div>
+        </header>
+
+        <!-- SPINNER -->
+        <template lwc:if={isLoading}>
+            <div class="spinner-container">
+                <lightning-spinner alternative-text="Processing disbursement" size="medium"></lightning-spinner>
+                <p class="spinner-text">Updating disbursement records…</p>
+            </div>
+        </template>
+
+        <!-- VIEW 1: APPROVED APPLICATIONS LIST -->
+        <template lwc:if={showListView}>
+            <div class="queue-panel">
+                <div class="queue-header-row">
+                    <div>
+                        <h2 class="section-title">Approved Applications Ready for Disbursement</h2>
+                        <p class="section-subtitle">Applications that passed formal manager underwriting and require capital release.</p>
+                    </div>
+                    <div class="queue-stats">
+                        <span class="badge badge-approved">{approvedApplications.length} Approved & Undisbursed</span>
+                    </div>
+                </div>
+
+                <template lwc:if={hasApprovedApplications}>
+                    <div class="table-responsive">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered custom-table">
+                            <thead>
+                                <tr>
+                                    <th>APP NUMBER</th>
+                                    <th>CUSTOMER / BORROWER</th>
+                                    <th>SEGMENT</th>
+                                    <th>APPROVED PRINCIPAL</th>
+                                    <th>TENURE</th>
+                                    <th>APPROVAL DATE</th>
+                                    <th>APPROVED BY</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={approvedApplications} for:item="app">
+                                    <tr key={app.Id}>
+                                        <td class="font-bold text-primary">{app.Name}</td>
+                                        <td>
+                                            <div class="customer-cell">
+                                                <span class="font-semibold">{app.Customer_Account__r.Name}</span>
+                                                <span class="text-muted text-xs">{app.Applicant_Contact__r.Name}</span>
+                                            </div>
+                                        </td>
+                                        <td><span class="segment-tag">{app.Loan_Segment__c}</span></td>
+                                        <td class="amount-cell">
+                                            <lightning-formatted-number
+                                                value={app.Requested_Amount__c}
+                                                format-style="currency"
+                                                currency-code="INR"
+                                                maximum-fraction-digits="0">
+                                            </lightning-formatted-number>
+                                        </td>
+                                        <td>{app.Requested_Tenure_Months__c} mos</td>
+                                        <td>
+                                            <lightning-formatted-date-time
+                                                value={app.Approved_Date__c}
+                                                year="numeric"
+                                                month="short"
+                                                day="2-digit">
+                                            </lightning-formatted-date-time>
+                                        </td>
+                                        <td>{app.approverName}</td>
+                                        <td>
+                                            <button
+                                                class="btn-disburse"
+                                                data-id={app.Id}
+                                                onclick={handleSelectApplication}>
+                                                Disburse Loan &rarr;
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <div class="empty-state">
+                        <lightning-icon icon-name="utility:money" size="large" variant="success"></lightning-icon>
+                        <h3>No Applications Awaiting Disbursement</h3>
+                        <p>All approved loan applications have already been disbursed, or no newly approved applications are currently pending.</p>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- VIEW 2: DISBURSEMENT EXECUTION PANEL -->
+        <template lwc:if={showDisbursementForm}>
+            <div class="disbursement-grid">
+                <!-- LEFT CARD: APPLICATION TERMS & BORROWER INFO -->
+                <div class="terms-column">
+                    <div class="terms-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:file" size="x-small"></lightning-icon>
+                            <h3>Underwriting & Facility Terms</h3>
+                        </div>
+                        <div class="summary-id-row">
+                            <span class="summary-label">APPLICATION NUMBER</span>
+                            <span class="text-xl font-bold text-primary">{selectedApplication.Name}</span>
+                        </div>
+                        <div class="parameters-grid">
+                            <div class="param-box">
+                                <span class="param-title">Borrower Customer</span>
+                                <span class="param-value font-semibold">{selectedApplication.Customer_Account__r.Name}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Applicant Contact</span>
+                                <span class="param-value font-semibold">{selectedApplication.Applicant_Contact__r.Name}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Approved Principal</span>
+                                <span class="param-value font-bold text-xl text-primary">
+                                    <lightning-formatted-number
+                                        value={selectedApplication.Requested_Amount__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="0">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Tenure</span>
+                                <span class="param-value font-bold text-xl">{selectedApplication.Requested_Tenure_Months__c} Months</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Facility Segment</span>
+                                <span class="segment-tag">{selectedApplication.Loan_Segment__c}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Configured Interest Rate</span>
+                                <span class="param-value font-bold text-accent">{interestRate}% p.a.</span>
+                            </div>
+                            <div class="param-box full-width">
+                                <span class="param-title">Stated Purpose</span>
+                                <span class="param-value">{selectedApplication.Purpose_of_Loan__c}</span>
+                            </div>
+                        </div>
+
+                        <div class="governance-notice">
+                            <lightning-icon icon-name="utility:shield" size="xx-small"></lightning-icon>
+                            <span>
+                                Approved by <strong>{selectedApplication.approverName}</strong>. Ready for capital transfer.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT CARD: DISBURSEMENT FORM & CONTRACT GENERATION -->
+                <div class="form-column">
+                    <div class="action-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:payment_gateway" size="small"></lightning-icon>
+                            <div>
+                                <h3>Execution Parameters</h3>
+                                <p class="card-caption">Specify transaction date and initiate contract creation</p>
+                            </div>
+                        </div>
+
+                        <div class="form-fields">
+                            <lightning-input
+                                type="date"
+                                label="Actual Disbursement Date"
+                                value={disbursementDate}
+                                max={todayDate}
+                                onchange={handleDateChange}
+                                required>
+                            </lightning-input>
+
+                            <div class="installment-preview-box">
+                                <div class="installment-title">Estimated Monthly EMI (Installment)</div>
+                                <div class="installment-value">
+                                    <lightning-formatted-number
+                                        value={estimatedInstallment}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="2">
+                                    </lightning-formatted-number>
+                                </div>
+                                <div class="installment-note">
+                                    Calculated using standard reducing balance formula at {interestRate}% p.a. for {selectedApplication.Requested_Tenure_Months__c} months.
+                                </div>
+                            </div>
+
+                            <div class="alert-box alert-warning">
+                                <lightning-icon icon-name="utility:warning" size="x-small"></lightning-icon>
+                                <span class="text-xs">
+                                    <strong>Irreversible Financial Event:</strong> Once disbursed, a legally binding Loan record will be generated in <strong>Active</strong> status. Repayment schedule begins 1 month from disbursement date.
+                                </span>
+                            </div>
+
+                            <div class="button-group">
+                                <button class="btn btn-neutral" onclick={handleBackToApprovedList}>
+                                    Cancel
+                                </button>
+                                <button class="btn btn-success" onclick={handleExecuteDisbursement}>
+                                    <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
+                                    Confirm & Disburse Capital
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- VIEW 3: DISBURSEMENT SUCCESS CONFIRMATION -->
+        <template lwc:if={createdLoan}>
+            <div class="success-panel">
+                <div class="success-card">
+                    <div class="success-icon-wrap">
+                        <lightning-icon icon-name="utility:success" size="large" variant="inverse"></lightning-icon>
+                    </div>
+                    <h2>Loan Disbursed Successfully!</h2>
+                    <p class="success-message">
+                        Contract <strong>{createdLoan.Name}</strong> is now Active and tracked in Platypus Finance.
+                    </p>
+
+                    <div class="loan-summary-grid">
+                        <div class="param-box">
+                            <span class="param-title">Loan Reference</span>
+                            <span class="param-value font-bold text-primary text-xl">{createdLoan.Name}</span>
+                        </div>
+                        <div class="param-box">
+                            <span class="param-title">Disbursed Principal</span>
+                            <span class="param-value font-bold text-xl">
+                                <lightning-formatted-number
+                                    value={createdLoan.Disbursed_Amount__c}
+                                    format-style="currency"
+                                    currency-code="INR"
+                                    maximum-fraction-digits="0">
+                                </lightning-formatted-number>
+                            </span>
+                        </div>
+                        <div class="param-box">
+                            <span class="param-title">Monthly Installment (EMI)</span>
+                            <span class="param-value font-bold text-accent text-xl">
+                                <lightning-formatted-number
+                                    value={createdLoan.Monthly_Installment__c}
+                                    format-style="currency"
+                                    currency-code="INR"
+                                    maximum-fraction-digits="2">
+                                </lightning-formatted-number>
+                            </span>
+                        </div>
+                        <div class="param-box">
+                            <span class="param-title">First Payment Due Date</span>
+                            <span class="param-value font-semibold">
+                                <lightning-formatted-date-time
+                                    value={createdLoan.First_Due_Date__c}
+                                    year="numeric"
+                                    month="short"
+                                    day="2-digit">
+                                </lightning-formatted-date-time>
+                            </span>
+                        </div>
+                        <div class="param-box">
+                            <span class="param-title">Maturity Date</span>
+                            <span class="param-value font-semibold">
+                                <lightning-formatted-date-time
+                                    value={createdLoan.Maturity_Date__c}
+                                    year="numeric"
+                                    month="short"
+                                    day="2-digit">
+                                </lightning-formatted-date-time>
+                            </span>
+                        </div>
+                        <div class="param-box">
+                            <span class="param-title">Contract Status</span>
+                            <span class="badge badge-approved">{createdLoan.Loan_Status__c}</span>
+                        </div>
+                    </div>
+
+                    <div class="success-actions">
+                        <button class="btn btn-primary" onclick={handleNavigateToLoan}>
+                            <lightning-icon icon-name="utility:new_window" size="x-small"></lightning-icon>
+                            Open Loan Record
+                        </button>
+                        <button class="btn btn-outline" onclick={handleDone}>
+                            Return to Disbursement Console
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

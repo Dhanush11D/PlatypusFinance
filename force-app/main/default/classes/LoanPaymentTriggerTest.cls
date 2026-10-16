@@ -249,4 +249,104 @@ private class LoanPaymentTriggerTest {
 
         System.assertEquals('Reversed', payment.Payment_Status__c);
     }
+
+    @IsTest
+    static void testRejectMissingRequiredFields() {
+        Id loanId = createActiveLoan();
+
+        // Missing Loan__c
+        Loan_Payment__c p1 = buildPendingPayment(loanId);
+        p1.Loan__c = null;
+        System.assertEquals(false, Database.insert(p1, false).isSuccess());
+
+        // Missing Amount
+        Loan_Payment__c p2 = buildPendingPayment(loanId);
+        p2.Payment_Amount__c = null;
+        System.assertEquals(false, Database.insert(p2, false).isSuccess());
+
+        // Missing Date
+        Loan_Payment__c p3 = buildPendingPayment(loanId);
+        p3.Payment_Date__c = null;
+        System.assertEquals(false, Database.insert(p3, false).isSuccess());
+
+        // Missing Method
+        Loan_Payment__c p4 = buildPendingPayment(loanId);
+        p4.Payment_Method__c = null;
+        System.assertEquals(false, Database.insert(p4, false).isSuccess());
+
+        // Missing Type
+        Loan_Payment__c p5 = buildPendingPayment(loanId);
+        p5.Payment_Type__c = null;
+        System.assertEquals(false, Database.insert(p5, false).isSuccess());
+
+        // Missing Status
+        Loan_Payment__c p6 = buildPendingPayment(loanId);
+        p6.Payment_Status__c = null;
+        System.assertEquals(false, Database.insert(p6, false).isSuccess());
+    }
+
+    @IsTest
+    static void testRejectModifyingSuccessfulPaymentDetails() {
+        Id loanId = createActiveLoan();
+        Id paymentId = LoanPaymentService.recordPayment(
+            loanId, 1000, Date.today(), 'UPI', 'Part Payment', 'REF-MOD-1', 'Notes'
+        );
+        LoanPaymentService.markPaymentSuccessful(paymentId);
+
+        Loan_Payment__c payment = [
+            SELECT Id, Payment_Date__c, Payment_Method__c, Payment_Type__c, Payment_Status__c
+            FROM Loan_Payment__c
+            WHERE Id = :paymentId
+        ];
+
+        // Change Date
+        payment.Payment_Date__c = Date.today().addDays(-1);
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+
+        // Reset and change Method
+        payment = [SELECT Id, Payment_Date__c, Payment_Method__c, Payment_Type__c, Payment_Status__c FROM Loan_Payment__c WHERE Id = :paymentId];
+        payment.Payment_Method__c = 'Cash';
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+
+        // Reset and change Type
+        payment = [SELECT Id, Payment_Date__c, Payment_Method__c, Payment_Type__c, Payment_Status__c FROM Loan_Payment__c WHERE Id = :paymentId];
+        payment.Payment_Type__c = 'Full Settlement';
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+
+        // Reset and change Status to Pending
+        payment = [SELECT Id, Payment_Date__c, Payment_Method__c, Payment_Type__c, Payment_Status__c FROM Loan_Payment__c WHERE Id = :paymentId];
+        payment.Payment_Status__c = 'Pending';
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+    }
+
+    @IsTest
+    static void testRejectModifyingReversedPaymentDetails() {
+        Id loanId = createActiveLoan();
+        Id paymentId = LoanPaymentService.recordPayment(
+            loanId, 1000, Date.today(), 'UPI', 'Part Payment', 'REF-REV-MOD', 'Notes'
+        );
+        LoanPaymentService.markPaymentSuccessful(paymentId);
+        LoanPaymentService.reversePayment(paymentId, 'Reason');
+
+        Loan_Payment__c payment = [
+            SELECT Id, Payment_Amount__c, Payment_Method__c
+            FROM Loan_Payment__c
+            WHERE Id = :paymentId
+        ];
+        payment.Payment_Amount__c = 2000;
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+    }
+
+    @IsTest
+    static void testRejectReactivatingFailedPayment() {
+        Id loanId = createActiveLoan();
+        Loan_Payment__c payment = buildPendingPayment(loanId);
+        insert payment;
+
+        payment.Payment_Status__c = 'Failed';
+        update payment;
+
+        payment.Payment_Status__c = 'Pending';
+        System.assertEquals(false, Database.update(payment, false).isSuccess());
+    }
 }

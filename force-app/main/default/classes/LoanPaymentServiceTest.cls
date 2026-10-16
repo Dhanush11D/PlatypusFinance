@@ -519,4 +519,136 @@ private class LoanPaymentServiceTest {
         System.assert(paymentIds.contains(firstPaymentId));
         System.assert(paymentIds.contains(secondPaymentId));
     }
+
+    @IsTest
+    static void testRecordPaymentValidations() {
+        Loan__c loan = createActiveLoan();
+
+        Boolean nullLoan = false;
+        try {
+            LoanPaymentService.recordPayment(null, 1000, Date.today(), 'UPI', 'Regular Installment', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullLoan = true;
+        }
+        System.assert(nullLoan);
+
+        Boolean nullAmt = false;
+        try {
+            LoanPaymentService.recordPayment(loan.Id, null, Date.today(), 'UPI', 'Regular Installment', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullAmt = true;
+        }
+        System.assert(nullAmt);
+
+        Boolean zeroAmt = false;
+        try {
+            LoanPaymentService.recordPayment(loan.Id, 0, Date.today(), 'UPI', 'Regular Installment', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            zeroAmt = true;
+        }
+        System.assert(zeroAmt);
+
+        Boolean futureDate = false;
+        try {
+            LoanPaymentService.recordPayment(loan.Id, 1000, Date.today().addDays(1), 'UPI', 'Regular Installment', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            futureDate = true;
+        }
+        System.assert(futureDate);
+
+        Boolean invalidMethod = false;
+        try {
+            LoanPaymentService.recordPayment(loan.Id, 1000, Date.today(), 'Crypto', 'Regular Installment', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            invalidMethod = true;
+        }
+        System.assert(invalidMethod);
+
+        Boolean invalidType = false;
+        try {
+            LoanPaymentService.recordPayment(loan.Id, 1000, Date.today(), 'UPI', 'InvalidType', 'REF', 'Note');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            invalidType = true;
+        }
+        System.assert(invalidType);
+    }
+
+    @IsTest
+    static void testMarkPaymentSuccessfulValidations() {
+        Boolean nullPayment = false;
+        try {
+            LoanPaymentService.markPaymentSuccessful(null);
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullPayment = true;
+        }
+        System.assert(nullPayment);
+
+        Boolean notFound = false;
+        try {
+            LoanPaymentService.markPaymentSuccessful('a02000000000001AAA');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            notFound = true;
+        }
+        System.assert(notFound);
+    }
+
+    @IsTest
+    static void testReversePaymentValidations() {
+        Boolean nullPayment = false;
+        try {
+            LoanPaymentService.reversePayment(null, 'Reason');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullPayment = true;
+        }
+        System.assert(nullPayment);
+
+        Boolean blankReason = false;
+        try {
+            LoanPaymentService.reversePayment('a02000000000001AAA', '');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            blankReason = true;
+        }
+        System.assert(blankReason);
+    }
+
+    @IsTest
+    static void testPaymentRetrievalValidations() {
+        Boolean nullGet = false;
+        try {
+            LoanPaymentService.getPayment(null);
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullGet = true;
+        }
+        System.assert(nullGet);
+
+        Boolean notFoundGet = false;
+        try {
+            LoanPaymentService.getPayment('a02000000000001AAA');
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            notFoundGet = true;
+        }
+        System.assert(notFoundGet);
+
+        Boolean nullLoanPayments = false;
+        try {
+            LoanPaymentService.getLoanPayments(null);
+        } catch (LoanPaymentService.InvalidPaymentException ex) {
+            nullLoanPayments = true;
+        }
+        System.assert(nullLoanPayments);
+    }
+
+    @IsTest
+    static void testSearchActiveLoans() {
+        Loan__c loan = createActiveLoan();
+
+        List<Loan__c> allActive = LoanPaymentService.searchActiveLoans('');
+        System.assert(allActive.size() >= 1);
+
+        List<Loan__c> searchCust = LoanPaymentService.searchActiveLoans('Platypus');
+        System.assert(searchCust.size() >= 1);
+
+        List<Loan__c> noMatch = LoanPaymentService.searchActiveLoans('NonExistentXYZ999');
+        System.assertEquals(0, noMatch.size());
+    }
 }

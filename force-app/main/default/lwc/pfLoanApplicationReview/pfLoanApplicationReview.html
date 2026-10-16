@@ -1,0 +1,442 @@
+<template>
+    <div class="review-container">
+        <!-- TOP CARD HEADER -->
+        <header class="review-header">
+            <div class="header-main">
+                <div class="header-badge">
+                    <lightning-icon icon-name="standard:record" size="small" alternative-text="Review"></lightning-icon>
+                </div>
+                <div>
+                    <h1 class="header-title">Loan Application Review & Decision</h1>
+                    <p class="header-subtitle">
+                        Assess applicant eligibility, manage workflow stages, and issue formal credit decisions.
+                    </p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <template lwc:if={isRecordView}>
+                    <lightning-button
+                        label="Back to Review Queue"
+                        icon-name="utility:back"
+                        variant="neutral"
+                        onclick={handleBackToQueue}>
+                    </lightning-button>
+                </template>
+                <lightning-button
+                    label="Refresh Data"
+                    icon-name="utility:refresh"
+                    variant="neutral"
+                    onclick={handleRefresh}>
+                </lightning-button>
+            </div>
+        </header>
+
+        <!-- SPINNER -->
+        <template lwc:if={isLoading}>
+            <div class="spinner-container">
+                <lightning-spinner alternative-text="Loading application details" size="medium"></lightning-spinner>
+                <p class="spinner-text">Processing loan review data…</p>
+            </div>
+        </template>
+
+        <!-- VIEW 1: QUEUE SELECTION (When no recordId is provided or user clicks Back) -->
+        <template lwc:if={showQueueView}>
+            <div class="queue-panel">
+                <div class="queue-header-row">
+                    <div>
+                        <h2 class="section-title">Applications Awaiting Review</h2>
+                        <p class="section-subtitle">Submitted and in-progress loan applications ready for credit assessment.</p>
+                    </div>
+                    <div class="queue-stats">
+                        <span class="badge badge-submitted">{reviewQueue.length} Pending Review</span>
+                    </div>
+                </div>
+
+                <template lwc:if={hasQueueItems}>
+                    <div class="table-responsive">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered custom-table">
+                            <thead>
+                                <tr>
+                                    <th>APP NUMBER</th>
+                                    <th>CUSTOMER / APPLICANT</th>
+                                    <th>SEGMENT</th>
+                                    <th>REQUESTED</th>
+                                    <th>TENURE</th>
+                                    <th>STATUS</th>
+                                    <th>ELIGIBILITY</th>
+                                    <th>ASSIGNED MANAGER</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={reviewQueue} for:item="item">
+                                    <tr key={item.Id}>
+                                        <td class="font-bold text-primary">{item.Name}</td>
+                                        <td>
+                                            <div class="customer-cell">
+                                                <span class="font-semibold">{item.Customer_Account__r.Name}</span>
+                                                <span class="text-muted text-xs">{item.Applicant_Contact__r.Name}</span>
+                                            </div>
+                                        </td>
+                                        <td><span class="segment-tag">{item.Loan_Segment__c}</span></td>
+                                        <td class="amount-cell">
+                                            <lightning-formatted-number
+                                                value={item.Requested_Amount__c}
+                                                format-style="currency"
+                                                currency-code="INR"
+                                                maximum-fraction-digits="0">
+                                            </lightning-formatted-number>
+                                        </td>
+                                        <td>{item.Requested_Tenure_Months__c} mos</td>
+                                        <td>
+                                            <span class={item.statusClass}>{item.Application_Status__c}</span>
+                                        </td>
+                                        <td>
+                                            <span class={item.eligibilityClass}>{item.Eligibility_Status__c}</span>
+                                        </td>
+                                        <td>
+                                            <span class="text-sm">{item.managerName}</span>
+                                        </td>
+                                        <td>
+                                            <button
+                                                class="btn-select"
+                                                data-id={item.Id}
+                                                onclick={handleSelectFromQueue}>
+                                                Review App &rarr;
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <div class="empty-state">
+                        <lightning-icon icon-name="utility:check" size="large" variant="success"></lightning-icon>
+                        <h3>No Applications in Review Queue</h3>
+                        <p>All submitted applications have been reviewed or no pending applications match your access permissions.</p>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- VIEW 2: ACTIVE RECORD REVIEW DETAIL -->
+        <template lwc:if={showDetailView}>
+            <div class="review-grid">
+                <!-- LEFT COLUMN: APPLICATION & CUSTOMER DOSSIER -->
+                <div class="dossier-column">
+                    <!-- STATUS BANNER -->
+                    <div class="dossier-card status-summary-card">
+                        <div class="summary-meta">
+                            <span class="summary-label">APPLICATION</span>
+                            <h2 class="summary-id">{application.Name}</h2>
+                            <span class="summary-date">Applied on {formattedApplicationDate}</span>
+                        </div>
+                        <div class="summary-badges">
+                            <div class="badge-group">
+                                <span class="badge-label">Lifecycle Status</span>
+                                <span class={statusBadgeClass}>{application.Application_Status__c}</span>
+                            </div>
+                            <div class="badge-group">
+                                <span class="badge-label">Approval Stage</span>
+                                <span class="badge badge-stage">{application.Approval_Stage__c}</span>
+                            </div>
+                            <div class="badge-group">
+                                <span class="badge-label">Eligibility Assessment</span>
+                                <span class={eligibilityBadgeClass}>{application.Eligibility_Status__c}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LOAN PARAMETERS CARD -->
+                    <div class="dossier-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:moneybag" size="x-small"></lightning-icon>
+                            <h3>Loan Parameters</h3>
+                        </div>
+                        <div class="parameters-grid">
+                            <div class="param-box">
+                                <span class="param-title">Requested Principal</span>
+                                <span class="param-value text-xl font-bold">
+                                    <lightning-formatted-number
+                                        value={application.Requested_Amount__c}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="0">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Tenure</span>
+                                <span class="param-value text-xl font-bold">{application.Requested_Tenure_Months__c} Months</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Loan Segment</span>
+                                <span class="segment-tag">{application.Loan_Segment__c}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Applicable Rate</span>
+                                <span class="param-value font-semibold text-accent">{interestRate}% p.a.</span>
+                            </div>
+                            <div class="param-box full-width">
+                                <span class="param-title">Stated Purpose</span>
+                                <span class="param-value font-medium">{application.Purpose_of_Loan__c}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CUSTOMER & APPLICANT RISK CARD -->
+                    <div class="dossier-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:user" size="x-small"></lightning-icon>
+                            <h3>Customer & Applicant Dossier</h3>
+                        </div>
+                        <div class="parameters-grid">
+                            <div class="param-box">
+                                <span class="param-title">Customer Account</span>
+                                <span class="param-value font-semibold">{application.Customer_Account__r.Name}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Customer Status</span>
+                                <span class={customerStatusClass}>{application.Customer_Account__r.Customer_Status__c}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">KYC Status</span>
+                                <span class={kycStatusClass}>{application.Customer_Account__r.KYC_Status__c}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Risk Category</span>
+                                <span class={riskCategoryClass}>{application.Customer_Account__r.Risk_Category__c}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Applicant Name</span>
+                                <span class="param-value font-semibold">{application.Applicant_Contact__r.Name}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Monthly Income (Verified Snapshot)</span>
+                                <span class="param-value font-bold text-success">
+                                    <lightning-formatted-number
+                                        value={incomeSnapshot}
+                                        format-style="currency"
+                                        currency-code="INR"
+                                        maximum-fraction-digits="0">
+                                    </lightning-formatted-number>
+                                </span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Applicant Email</span>
+                                <span class="param-value">{application.Applicant_Contact__r.Email}</span>
+                            </div>
+                            <div class="param-box">
+                                <span class="param-title">Applicant Phone</span>
+                                <span class="param-value">{application.Applicant_Contact__r.Phone}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AUDIT & DECISION TRAIL CARD -->
+                    <div class="dossier-card">
+                        <div class="card-header">
+                            <lightning-icon icon-name="utility:lock" size="x-small"></lightning-icon>
+                            <h3>Audit & Governance Trail</h3>
+                        </div>
+                        <div class="audit-list">
+                            <div class="audit-row">
+                                <span class="audit-label">Assigned Manager:</span>
+                                <span class="audit-val font-semibold">{managerDisplay}</span>
+                            </div>
+                            <template lwc:if={application.Approved_By__c}>
+                                <div class="audit-row success-row">
+                                    <span class="audit-label">Approved By:</span>
+                                    <span class="audit-val font-bold">{application.Approved_By__r.Name} on {formattedApprovedDate}</span>
+                                </div>
+                            </template>
+                            <template lwc:if={application.Rejected_By__c}>
+                                <div class="audit-row danger-row">
+                                    <span class="audit-label">Rejected By:</span>
+                                    <span class="audit-val font-bold">{application.Rejected_By__r.Name} on {formattedRejectedDate}</span>
+                                </div>
+                                <div class="audit-row danger-row">
+                                    <span class="audit-label">Rejection Reason:</span>
+                                    <span class="audit-val text-danger font-bold">{application.Rejection_Reason__c}</span>
+                                </div>
+                            </template>
+                            <template lwc:if={application.Decision_Comments__c}>
+                                <div class="audit-row">
+                                    <span class="audit-label">Decision Comments:</span>
+                                    <span class="audit-val italic">{application.Decision_Comments__c}</span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: ACTION & DECISION CONSOLE -->
+                <div class="actions-column">
+                    <div class="action-card">
+                        <div class="card-header action-header">
+                            <lightning-icon icon-name="utility:form" size="small"></lightning-icon>
+                            <div>
+                                <h3>Credit Decision Engine</h3>
+                                <p class="card-caption">Execute authorized workflow transitions</p>
+                            </div>
+                        </div>
+
+                        <!-- ASSIGNMENT NOTICE -->
+                        <template lwc:if={canAssignToMe}>
+                            <div class="alert-box alert-info">
+                                <lightning-icon icon-name="utility:info" size="x-small"></lightning-icon>
+                                <div>
+                                    <p class="font-semibold">Unassigned or Assigned to Another User</p>
+                                    <p class="text-xs">You must assign this application to yourself to conduct review and decision actions.</p>
+                                </div>
+                                <button class="btn btn-sm btn-primary" onclick={handleAssignToMe}>
+                                    Assign to Me
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- STEP 1: ELIGIBILITY ASSESSMENT -->
+                        <div class="action-section">
+                            <div class="section-label-row">
+                                <span class="step-circle">1</span>
+                                <h4>Preliminary Eligibility Assessment</h4>
+                            </div>
+                            <p class="step-desc">
+                                Validates applicant status, KYC compliance, risk tier, and positive income records against lending boundaries.
+                            </p>
+                            <div class="eligibility-status-display">
+                                <span>Current Assessment:</span>
+                                <span class={eligibilityBadgeClass}>{application.Eligibility_Status__c}</span>
+                            </div>
+                            <template lwc:if={isManualReview}>
+                                <div class="note-box">
+                                    <lightning-icon icon-name="utility:info" size="xx-small"></lightning-icon>
+                                    <span>
+                                        Affordability policy is set to Manual Review by standard risk guidelines. Formal approval requires verified Eligible status.
+                                    </span>
+                                </div>
+                            </template>
+                            <button
+                                class="btn btn-outline"
+                                disabled={isAssessDisabled}
+                                onclick={handleAssessEligibility}>
+                                <lightning-icon icon-name="utility:metrics" size="x-small"></lightning-icon>
+                                Run Eligibility Assessment
+                            </button>
+                        </div>
+
+                        <!-- STEP 2: START REVIEW -->
+                        <div class="action-section">
+                            <div class="section-label-row">
+                                <span class="step-circle">2</span>
+                                <h4>Formal Manager Review</h4>
+                            </div>
+                            <p class="step-desc">
+                                Move application from Submitted into Under Review to initiate formal underwriting.
+                            </p>
+                            <button
+                                class="btn btn-primary"
+                                disabled={isStartReviewDisabled}
+                                onclick={handleStartReview}>
+                                <lightning-icon icon-name="utility:record_lookup" size="x-small"></lightning-icon>
+                                Start Formal Review
+                            </button>
+                        </div>
+
+                        <!-- STEP 3: DECISION ACTIONS -->
+                        <div class="action-section">
+                            <div class="section-label-row">
+                                <span class="step-circle">3</span>
+                                <h4>Credit Decision</h4>
+                            </div>
+                            <p class="step-desc">
+                                Issue credit approval or formal rejection with governance reasons.
+                            </p>
+
+                            <!-- COMMENTS INPUT -->
+                            <lightning-textarea
+                                label="Decision Comments"
+                                placeholder="Enter operational notes or audit comments..."
+                                value={decisionComments}
+                                onchange={handleCommentsChange}
+                                disabled={isDecisionDisabled}>
+                            </lightning-textarea>
+
+                            <div class="decision-buttons">
+                                <button
+                                    class="btn btn-success"
+                                    disabled={isApproveDisabled}
+                                    onclick={handleApprove}>
+                                    <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
+                                    Approve Loan
+                                </button>
+                                <button
+                                    class="btn btn-danger"
+                                    disabled={isRejectDisabled}
+                                    onclick={handleOpenRejectModal}>
+                                    <lightning-icon icon-name="utility:close" size="x-small"></lightning-icon>
+                                    Reject Application
+                                </button>
+                            </div>
+
+                            <template lwc:if={canWithdraw}>
+                                <div class="withdrawal-section">
+                                    <button
+                                        class="btn btn-muted"
+                                        onclick={handleWithdraw}>
+                                        Withdraw Application
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- REJECTION MODAL -->
+        <template lwc:if={showRejectModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container modal-wrap">
+                    <header class="slds-modal__header modal-head-danger">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={handleCloseRejectModal}>
+                            <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium font-bold text-white">Confirm Loan Rejection</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <p class="modal-notice">
+                            You are recording a formal credit rejection for application <strong>{application.Name}</strong>.
+                            A mandatory rejection reason must be documented for regulatory audit compliance.
+                        </p>
+                        <lightning-combobox
+                            name="rejectionReason"
+                            label="Rejection Reason"
+                            placeholder="Select regulatory rejection reason..."
+                            value={selectedRejectionReason}
+                            options={rejectionReasonOptions}
+                            onchange={handleReasonChange}
+                            required>
+                        </lightning-combobox>
+
+                        <lightning-textarea
+                            name="rejectComments"
+                            label="Decision Comments"
+                            placeholder="Provide explanatory notes on the credit decision..."
+                            value={decisionComments}
+                            onchange={handleCommentsChange}>
+                        </lightning-textarea>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <button class="btn btn-neutral" onclick={handleCloseRejectModal}>Cancel</button>
+                        <button class="btn btn-danger" onclick={handleConfirmReject}>Confirm Rejection</button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

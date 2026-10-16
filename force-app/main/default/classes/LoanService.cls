@@ -60,6 +60,7 @@ public with sharing class LoanService {
             .setScale(2, RoundingMode.HALF_UP);
     }
 
+    @AuraEnabled
     public static Id disburseApprovedApplication(
         Id applicationId,
         Date actualDisbursementDate
@@ -214,6 +215,26 @@ public with sharing class LoanService {
         return loan.Id;
     }
 
+    @AuraEnabled(cacheable=true)
+    public static List<Loan_Application__c> getApprovedApplications() {
+        return [
+            SELECT Id, Name, Customer_Account__c, Customer_Account__r.Name,
+                   Applicant_Contact__c, Applicant_Contact__r.Name,
+                   Loan_Segment__c, Requested_Amount__c,
+                   Requested_Tenure_Months__c, Purpose_of_Loan__c,
+                   Eligibility_Status__c, Application_Status__c,
+                   Approved_Date__c, Approved_By__c, Approved_By__r.Name,
+                   Assigned_Manager__c, Assigned_Manager__r.Name
+            FROM Loan_Application__c
+            WHERE Application_Status__c = 'Approved'
+              AND Eligibility_Status__c = 'Eligible'
+              AND Id NOT IN (SELECT Loan_Application__c FROM Loan__c WHERE Loan_Application__c != null)
+            ORDER BY Approved_Date__c DESC
+            LIMIT 100
+        ];
+    }
+
+    @AuraEnabled(cacheable=true)
     public static Loan__c getLoan(Id loanId) {
         if (loanId == null) {
             throw new InvalidLoanException('A Loan ID is required.');
@@ -245,6 +266,7 @@ public with sharing class LoanService {
         return loans[0];
     }
 
+    @AuraEnabled(cacheable=true)
     public static List<Loan__c> getCustomerLoans(Id customerAccountId) {
         if (customerAccountId == null) {
             throw new InvalidLoanException(
@@ -268,6 +290,7 @@ public with sharing class LoanService {
         ];
     }
 
+    @AuraEnabled(cacheable=true)
     public static List<Loan__c> getMyAssignedLoans() {
         return [
             SELECT Id, Name, Customer_Account__c,
@@ -283,6 +306,7 @@ public with sharing class LoanService {
         ];
     }
 
+    @AuraEnabled
     public static void closeLoan(Id loanId) {
         if (loanId == null) {
             throw new InvalidLoanException('A Loan ID is required.');

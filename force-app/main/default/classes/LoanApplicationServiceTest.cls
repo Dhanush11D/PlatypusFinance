@@ -130,10 +130,16 @@ private class LoanApplicationServiceTest {
         Account customer = createCustomer();
         Contact applicant = createContact(customer.Id);
 
-        Loan_Application__c application = createApplication(
-            customer.Id, applicant.Id, 9999, 3,
-            'Personal', 'Under Review'
-        );
+        Loan_Application__c application;
+        LoanApplicationTriggerHandler.bypassTrigger = true;
+        try {
+            application = createApplication(
+                customer.Id, applicant.Id, 9999, 3,
+                'Personal', 'Under Review'
+            );
+        } finally {
+            LoanApplicationTriggerHandler.bypassTrigger = false;
+        }
 
         assertServiceException(application.Id);
     }
@@ -143,10 +149,16 @@ private class LoanApplicationServiceTest {
         Account customer = createCustomer();
         Contact applicant = createContact(customer.Id);
 
-        Loan_Application__c application = createApplication(
-            customer.Id, applicant.Id, 500001, 3,
-            'Personal', 'Under Review'
-        );
+        Loan_Application__c application;
+        LoanApplicationTriggerHandler.bypassTrigger = true;
+        try {
+            application = createApplication(
+                customer.Id, applicant.Id, 500001, 3,
+                'Personal', 'Under Review'
+            );
+        } finally {
+            LoanApplicationTriggerHandler.bypassTrigger = false;
+        }
 
         assertServiceException(application.Id);
     }
@@ -157,10 +169,16 @@ private class LoanApplicationServiceTest {
         Contact applicant = createContact(customer.Id);
 
         for (Decimal tenure : new List<Decimal>{2, 54}) {
-            Loan_Application__c application = createApplication(
-                customer.Id, applicant.Id, 10000, tenure,
-                'Personal', 'Under Review'
-            );
+            Loan_Application__c application;
+            LoanApplicationTriggerHandler.bypassTrigger = true;
+            try {
+                application = createApplication(
+                    customer.Id, applicant.Id, 10000, tenure,
+                    'Personal', 'Under Review'
+                );
+            } finally {
+                LoanApplicationTriggerHandler.bypassTrigger = false;
+            }
 
             assertServiceException(application.Id);
         }
@@ -172,10 +190,16 @@ private class LoanApplicationServiceTest {
         Account secondCustomer = createCustomer();
         Contact applicant = createContact(firstCustomer.Id);
 
-        Loan_Application__c application = createApplication(
-            secondCustomer.Id, applicant.Id, 10000, 3,
-            'Personal', 'Under Review'
-        );
+        Loan_Application__c application;
+        LoanApplicationTriggerHandler.bypassTrigger = true;
+        try {
+            application = createApplication(
+                secondCustomer.Id, applicant.Id, 10000, 3,
+                'Personal', 'Under Review'
+            );
+        } finally {
+            LoanApplicationTriggerHandler.bypassTrigger = false;
+        }
 
         assertServiceException(application.Id);
     }
@@ -453,5 +477,190 @@ private class LoanApplicationServiceTest {
             LoanApplicationService.getMyAssignedApplications();
 
         System.assertEquals(1, results.size());
+    }
+
+    @IsTest
+    static void testApplicationRetrievalValidations() {
+        Boolean thrownNull = false;
+        try {
+            LoanApplicationService.getApplication(null);
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            thrownNull = true;
+        }
+        System.assert(thrownNull, 'Expected exception on null application id');
+
+        Boolean thrownNotFound = false;
+        try {
+            LoanApplicationService.getApplication('a00000000000001AAA');
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            thrownNotFound = true;
+        }
+        System.assert(thrownNotFound, 'Expected exception on non-existent application id');
+
+        List<Loan_Application__c> queue = LoanApplicationService.getApplicationsForReview();
+        System.assertNotEquals(null, queue);
+    }
+
+    @IsTest
+    static void testAssignManagerWorkflow() {
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+
+        Loan_Application__c application = createApplication(
+            customer.Id, applicant.Id, 25000, 12,
+            'Personal', 'Submitted'
+        );
+
+        Boolean nullThrown = false;
+        try {
+            LoanApplicationService.assignManager(null, UserInfo.getUserId());
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            nullThrown = true;
+        }
+        System.assert(nullThrown);
+
+        Boolean inactiveThrown = false;
+        try {
+            LoanApplicationService.assignManager(application.Id, '005000000000001AAA');
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            inactiveThrown = true;
+        }
+        System.assert(inactiveThrown);
+
+        LoanApplicationService.assignManager(application.Id, UserInfo.getUserId());
+        Loan_Application__c updated = [SELECT Assigned_Manager__c FROM Loan_Application__c WHERE Id = :application.Id];
+        System.assertEquals(UserInfo.getUserId(), updated.Assigned_Manager__c);
+    }
+
+    @IsTest
+    static void testManagerAuthorizationEnforcement() {
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'System Administrator' LIMIT 1];
+        User otherUser = new User(
+            FirstName = 'Other',
+            LastName = 'Manager',
+            Email = 'othermanager@test.com',
+            Username = 'othermanager' + DateTime.now().getTime() + '@test.com',
+            Alias = 'oman',
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            ProfileId = p.Id,
+            LanguageLocaleKey = 'en_US'
+        );
+        insert otherUser;
+
+        Loan_Application__c application = createApplication(
+            customer.Id, applicant.Id, 25000, 12,
+            'Personal', 'Submitted'
+        );
+
+        System.runAs(otherUser) {
+            Boolean thrownReview = false;
+            try {
+                LoanApplicationService.startReview(application.Id);
+            } catch (LoanApplicationService.LoanAuthorizationException ex) {
+                thrownReview = true;
+            }
+            System.assert(thrownReview, 'Unassigned user should not be able to start review');
+
+            Boolean thrownApprove = false;
+            try {
+                LoanApplicationService.approveApplication(application.Id);
+            } catch (LoanApplicationService.LoanAuthorizationException ex) {
+                thrownApprove = true;
+            }
+            System.assert(thrownApprove, 'Unassigned user should not be able to approve');
+        }
+    }
+
+    @IsTest
+    static void testAssessEligibilityBlockedAndInactiveCustomer() {
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+
+        Loan_Application__c appBlocked = createApplication(
+            customer.Id, applicant.Id, 25000, 12,
+            'Personal', 'Submitted'
+        );
+
+        customer.Customer_Status__c = 'Blocked';
+        update customer;
+
+        String resultBlocked = LoanApplicationService.assessEligibility(appBlocked.Id);
+        System.assertEquals('Ineligible', resultBlocked);
+
+        customer.Customer_Status__c = 'Inactive';
+        update customer;
+
+        String resultInactive = LoanApplicationService.assessEligibility(appBlocked.Id);
+        System.assertEquals('Ineligible', resultInactive);
+    }
+
+    @IsTest
+    static void testDecideApplicationIneligibleBlocked() {
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+
+        Loan_Application__c application = createApplication(
+            customer.Id, applicant.Id, 25000, 12,
+            'Personal', 'Submitted'
+        );
+
+        LoanApplicationService.startReview(application.Id);
+
+        application.Eligibility_Status__c = 'Ineligible';
+        update application;
+
+        Boolean thrownIneligible = false;
+        try {
+            LoanApplicationService.approveApplication(application.Id);
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            thrownIneligible = true;
+        }
+        System.assert(thrownIneligible, 'Deciding on Ineligible application should be blocked');
+    }
+
+    @IsTest
+    static void testValidateApplicationRecordIncompleteFields() {
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+
+        LoanApplicationTriggerHandler.bypassTrigger = true;
+        Loan_Application__c app = new Loan_Application__c(
+            Customer_Account__c = customer.Id,
+            Loan_Segment__c = 'Personal',
+            Requested_Amount__c = 50000,
+            Requested_Tenure_Months__c = 12,
+            Purpose_of_Loan__c = 'Personal Expenses',
+            Eligibility_Status__c = 'Not Checked',
+            Application_Status__c = 'Draft'
+        );
+        insert app;
+        LoanApplicationTriggerHandler.bypassTrigger = false;
+
+        Boolean thrownApplicant = false;
+        try {
+            LoanApplicationService.submitApplication(app.Id);
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            thrownApplicant = true;
+        }
+        System.assert(thrownApplicant, 'Submitting without applicant contact should fail validation');
+
+        LoanApplicationTriggerHandler.bypassTrigger = true;
+        app.Applicant_Contact__c = applicant.Id;
+        app.Application_Date__c = null;
+        update app;
+        LoanApplicationTriggerHandler.bypassTrigger = false;
+
+        Boolean thrownDate = false;
+        try {
+            LoanApplicationService.submitApplication(app.Id);
+        } catch (LoanApplicationService.InvalidApplicationException ex) {
+            thrownDate = true;
+        }
+        System.assert(thrownDate, 'Submitting without application date should fail validation');
     }
 }

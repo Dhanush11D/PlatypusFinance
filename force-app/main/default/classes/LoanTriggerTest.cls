@@ -234,4 +234,23 @@ private class LoanTriggerTest {
             savedLoan.Principal_Amount__c
         );
     }
+
+    @IsTest
+    static void testRejectNegativeFinancialFields() {
+        Loan__c loan = createActiveLoan();
+        loan.Overdue_Amount__c = -100;
+        System.assertEquals(false, Database.update(loan, false).isSuccess());
+
+        loan = [SELECT Id, Overdue_Amount__c, Disbursed_Amount__c, Loan_Start_Date__c FROM Loan__c WHERE Id = :loan.Id];
+        loan.Disbursed_Amount__c = -500;
+        System.assertEquals(false, Database.update(loan, false).isSuccess());
+
+        loan = [SELECT Id, Overdue_Amount__c, Disbursed_Amount__c, Loan_Start_Date__c FROM Loan__c WHERE Id = :loan.Id];
+        loan.Disbursed_Amount__c = 0;
+        System.assertEquals(false, Database.update(loan, false).isSuccess());
+
+        loan = [SELECT Id, Overdue_Amount__c, Disbursed_Amount__c, Loan_Start_Date__c FROM Loan__c WHERE Id = :loan.Id];
+        loan.Loan_Start_Date__c = null;
+        System.assertEquals(false, Database.update(loan, false).isSuccess());
+    }
 }

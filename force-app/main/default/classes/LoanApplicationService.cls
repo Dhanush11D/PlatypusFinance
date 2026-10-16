@@ -53,6 +53,7 @@ public with sharing class LoanApplicationService {
     // APPLICATION RETRIEVAL
     // =========================================================
 
+    @AuraEnabled(cacheable=true)
     public static Loan_Application__c getApplication(Id applicationId) {
         if (applicationId == null) {
             throw new InvalidApplicationException(
@@ -63,7 +64,15 @@ public with sharing class LoanApplicationService {
         List<Loan_Application__c> records = [
             SELECT Id, Name,
                    Customer_Account__c,
+                   Customer_Account__r.Name,
+                   Customer_Account__r.Customer_Status__c,
+                   Customer_Account__r.KYC_Status__c,
+                   Customer_Account__r.Risk_Category__c,
                    Applicant_Contact__c,
+                   Applicant_Contact__r.Name,
+                   Applicant_Contact__r.Monthly_Income__c,
+                   Applicant_Contact__r.Email,
+                   Applicant_Contact__r.Phone,
                    Application_Date__c,
                    Loan_Segment__c,
                    Requested_Amount__c,
@@ -74,11 +83,14 @@ public with sharing class LoanApplicationService {
                    Eligibility_Status__c,
                    Monthly_Income_Snapshot__c,
                    Assigned_Manager__c,
+                   Assigned_Manager__r.Name,
                    Decision_Comments__c,
                    Rejection_Reason__c,
                    Approved_By__c,
+                   Approved_By__r.Name,
                    Approved_Date__c,
                    Rejected_By__c,
+                   Rejected_By__r.Name,
                    Rejected_Date__c
             FROM Loan_Application__c
             WHERE Id = :applicationId
@@ -94,11 +106,14 @@ public with sharing class LoanApplicationService {
         return records[0];
     }
 
+    @AuraEnabled(cacheable=true)
     public static List<Loan_Application__c> getMyAssignedApplications() {
         return [
             SELECT Id, Name,
                    Customer_Account__c,
+                   Customer_Account__r.Name,
                    Applicant_Contact__c,
+                   Applicant_Contact__r.Name,
                    Application_Date__c,
                    Loan_Segment__c,
                    Requested_Amount__c,
@@ -110,6 +125,33 @@ public with sharing class LoanApplicationService {
             FROM Loan_Application__c
             WHERE Assigned_Manager__c = :UserInfo.getUserId()
             ORDER BY Application_Date__c DESC
+            LIMIT 200
+        ];
+    }
+
+    @AuraEnabled(cacheable=true)
+    public static List<Loan_Application__c> getApplicationsForReview() {
+        return [
+            SELECT Id, Name,
+                   Customer_Account__c, Customer_Account__r.Name,
+                   Customer_Account__r.Customer_Status__c,
+                   Customer_Account__r.KYC_Status__c,
+                   Customer_Account__r.Risk_Category__c,
+                   Applicant_Contact__c, Applicant_Contact__r.Name,
+                   Applicant_Contact__r.Monthly_Income__c,
+                   Application_Date__c,
+                   Loan_Segment__c,
+                   Requested_Amount__c,
+                   Requested_Tenure_Months__c,
+                   Purpose_of_Loan__c,
+                   Application_Status__c,
+                   Approval_Stage__c,
+                   Eligibility_Status__c,
+                   Monthly_Income_Snapshot__c,
+                   Assigned_Manager__c, Assigned_Manager__r.Name
+            FROM Loan_Application__c
+            WHERE Application_Status__c IN ('Submitted', 'Under Review')
+            ORDER BY Application_Date__c DESC, CreatedDate DESC
             LIMIT 200
         ];
     }
@@ -250,6 +292,7 @@ public with sharing class LoanApplicationService {
     // PRELIMINARY ELIGIBILITY
     // =========================================================
 
+    @AuraEnabled
     public static String assessEligibility(Id applicationId) {
         Loan_Application__c application =
             getApplicationForUpdate(applicationId);
@@ -308,6 +351,7 @@ public with sharing class LoanApplicationService {
     // MANAGER ASSIGNMENT
     // =========================================================
 
+    @AuraEnabled
     public static void assignManager(
         Id applicationId,
         Id managerUserId
@@ -349,6 +393,7 @@ public with sharing class LoanApplicationService {
     // MANAGER REVIEW
     // =========================================================
 
+    @AuraEnabled
     public static void startReview(Id applicationId) {
         Loan_Application__c application =
             getApplicationForUpdate(applicationId);
@@ -371,6 +416,7 @@ public with sharing class LoanApplicationService {
     // APPROVAL
     // =========================================================
 
+    @AuraEnabled
     public static void approveApplication(Id applicationId) {
         decideApplication(applicationId, true, null, null);
     }
@@ -379,6 +425,7 @@ public with sharing class LoanApplicationService {
     // REJECTION
     // =========================================================
 
+    @AuraEnabled
     public static void rejectApplication(
         Id applicationId,
         String rejectionReason,
@@ -457,6 +504,7 @@ public with sharing class LoanApplicationService {
     // WITHDRAWAL
     // =========================================================
 
+    @AuraEnabled
     public static void withdrawApplication(Id applicationId) {
         Loan_Application__c application =
             getApplicationForUpdate(applicationId);

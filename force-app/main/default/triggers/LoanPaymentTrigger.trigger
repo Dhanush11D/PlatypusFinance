@@ -70,6 +70,24 @@ trigger LoanPaymentTrigger on Loan_Payment__c (
             Loan_Payment__c oldPayment =
                 Trigger.oldMap.get(payment.Id);
 
+            // Enforce financial integrity: payment status transitions that impact
+            // loan balance must only occur through LoanPaymentService.
+            if (oldPayment.Payment_Status__c == 'Pending' &&
+                payment.Payment_Status__c == 'Successful' &&
+                !LoanPaymentService.isServiceProcessing) {
+                payment.Payment_Status__c.addError(
+                    'Direct update to Successful is not permitted. Process the payment via LoanPaymentService to ensure balance updates.'
+                );
+            }
+
+            if (oldPayment.Payment_Status__c == 'Successful' &&
+                payment.Payment_Status__c == 'Reversed' &&
+                !LoanPaymentService.isServiceProcessing) {
+                payment.Payment_Status__c.addError(
+                    'Direct payment reversal is not permitted. Reverse the payment via LoanPaymentService to ensure balance restoration.'
+                );
+            }
+
             // Prevent changing the payment's financial identity
             // after it has been successfully processed.
             if (oldPayment.Payment_Status__c == 'Successful') {
@@ -122,6 +140,19 @@ trigger LoanPaymentTrigger on Loan_Payment__c (
                 payment.Payment_Status__c.addError(
                     'A reversed payment cannot be reactivated.'
                 );
+            }
+
+            // Prevent changing financial details on reversed or failed payments
+            if (oldPayment.Payment_Status__c == 'Reversed' || oldPayment.Payment_Status__c == 'Failed') {
+                if (payment.Loan__c != oldPayment.Loan__c ||
+                    payment.Payment_Amount__c != oldPayment.Payment_Amount__c ||
+                    payment.Payment_Date__c != oldPayment.Payment_Date__c ||
+                    payment.Payment_Method__c != oldPayment.Payment_Method__c ||
+                    payment.Payment_Type__c != oldPayment.Payment_Type__c) {
+                    payment.addError(
+                        'Financial details cannot be modified on a ' + oldPayment.Payment_Status__c + ' payment.'
+                    );
+                }
             }
 
             // Prevent failed payments from being marked successful

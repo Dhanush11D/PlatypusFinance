@@ -375,4 +375,193 @@ private class LoanServiceTest {
 
         System.assert(thrown);
     }
+
+    @IsTest
+    static void testDisbursementValidations() {
+        Boolean nullAppThrown = false;
+        try {
+            LoanService.disburseApprovedApplication(null, Date.today());
+        } catch (LoanService.InvalidLoanException ex) {
+            nullAppThrown = true;
+        }
+        System.assert(nullAppThrown);
+
+        Boolean nullDateThrown = false;
+        try {
+            LoanService.disburseApprovedApplication('a00000000000001AAA', null);
+        } catch (LoanService.InvalidLoanException ex) {
+            nullDateThrown = true;
+        }
+        System.assert(nullDateThrown);
+
+        Boolean futureDateThrown = false;
+        try {
+            LoanService.disburseApprovedApplication('a00000000000001AAA', Date.today().addDays(1));
+        } catch (LoanService.InvalidLoanException ex) {
+            futureDateThrown = true;
+        }
+        System.assert(futureDateThrown);
+
+        Boolean notFoundThrown = false;
+        try {
+            LoanService.disburseApprovedApplication('a00000000000001AAA', Date.today());
+        } catch (LoanService.InvalidLoanException ex) {
+            notFoundThrown = true;
+        }
+        System.assert(notFoundThrown);
+    }
+
+    @IsTest
+    static void testLoanQueriesAndRetrievalValidations() {
+        Boolean nullLoanThrown = false;
+        try {
+            LoanService.getLoan(null);
+        } catch (LoanService.InvalidLoanException ex) {
+            nullLoanThrown = true;
+        }
+        System.assert(nullLoanThrown);
+
+        Boolean notFoundLoanThrown = false;
+        try {
+            LoanService.getLoan('a01000000000001AAA');
+        } catch (LoanService.InvalidLoanException ex) {
+            notFoundLoanThrown = true;
+        }
+        System.assert(notFoundLoanThrown);
+
+        Boolean nullCustThrown = false;
+        try {
+            LoanService.getCustomerLoans(null);
+        } catch (LoanService.InvalidLoanException ex) {
+            nullCustThrown = true;
+        }
+        System.assert(nullCustThrown);
+
+        List<Loan_Application__c> approved = LoanService.getApprovedApplications();
+        System.assertNotEquals(null, approved);
+
+        List<Loan__c> myLoans = LoanService.getMyAssignedLoans();
+        System.assertNotEquals(null, myLoans);
+    }
+
+    @IsTest
+    static void testCloseLoanValidations() {
+        Boolean nullThrown = false;
+        try {
+            LoanService.closeLoan(null);
+        } catch (LoanService.InvalidLoanException ex) {
+            nullThrown = true;
+        }
+        System.assert(nullThrown);
+
+        Boolean notFoundThrown = false;
+        try {
+            LoanService.closeLoan('a01000000000001AAA');
+        } catch (LoanService.InvalidLoanException ex) {
+            notFoundThrown = true;
+        }
+        System.assert(notFoundThrown);
+
+        // Loan with balance > 0 cannot be closed
+        Loan_Application__c application = createApprovedApplication();
+        Id loanId = LoanService.disburseApprovedApplication(application.Id, Date.today());
+
+        Boolean balanceThrown = false;
+        try {
+            LoanService.closeLoan(loanId);
+        } catch (LoanService.InvalidLoanException ex) {
+            balanceThrown = true;
+        }
+        System.assert(balanceThrown, 'Loan with positive balance cannot be closed');
+    }
+
+    @IsTest
+    static void testCancelUndisbursedLoanSuccessAndValidations() {
+        Boolean nullLoan = false;
+        try {
+            LoanService.cancelUndisbursedLoan(null);
+        } catch (LoanService.InvalidLoanException ex) {
+            nullLoan = true;
+        }
+        System.assert(nullLoan);
+
+        Boolean notFound = false;
+        try {
+            LoanService.cancelUndisbursedLoan('a01000000000001AAA');
+        } catch (LoanService.InvalidLoanException ex) {
+            notFound = true;
+        }
+        System.assert(notFound);
+
+        Account customer = createCustomer();
+        Contact applicant = createContact(customer.Id);
+        Loan_Application__c application = createApprovedApplication();
+
+        Loan__c pendingLoan = new Loan__c(
+            Loan_Application__c = application.Id,
+            Customer_Account__c = customer.Id,
+            Borrower_Contact__c = applicant.Id,
+            Principal_Amount__c = 50000,
+            Annual_Interest_Rate__c = 12.0,
+            Tenure_Months__c = 12,
+            Loan_Status__c = 'Pending Disbursement',
+            Assigned_Manager__c = UserInfo.getUserId(),
+            Loan_Start_Date__c = Date.today(),
+            First_Due_Date__c = Date.today().addMonths(1),
+            Maturity_Date__c = Date.today().addMonths(12),
+            Next_Payment_Due_Date__c = Date.today().addMonths(1),
+            Total_Amount_Paid__c = 0,
+            Outstanding_Balance__c = 50000,
+            Overdue_Amount__c = 0
+        );
+        insert pendingLoan;
+
+        LoanService.cancelUndisbursedLoan(pendingLoan.Id);
+
+        Loan__c cancelledLoan = [SELECT Loan_Status__c FROM Loan__c WHERE Id = :pendingLoan.Id];
+        System.assertEquals('Cancelled', cancelledLoan.Loan_Status__c);
+    }
+
+    @IsTest
+    static void testDisbursementAuthorizationAndAuditValidation() {
+        Loan_Application__c app = createApprovedApplication();
+
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'System Administrator' LIMIT 1];
+        User otherUser = new User(
+            FirstName = 'Other',
+            LastName = 'Disburser',
+            Email = 'otherdisb@test.com',
+            Username = 'otherdisb' + DateTime.now().getTime() + '@test.com',
+            Alias = 'odisb',
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            ProfileId = p.Id,
+            LanguageLocaleKey = 'en_US'
+        );
+        insert otherUser;
+
+        System.runAs(otherUser) {
+            Boolean authThrown = false;
+            try {
+                LoanService.disburseApprovedApplication(app.Id, Date.today());
+            } catch (LoanService.LoanAuthorizationException ex) {
+                authThrown = true;
+            }
+            System.assert(authThrown, 'Unassigned user cannot disburse loan');
+        }
+
+        // Test missing approval audit
+        Loan_Application__c appAuditMissing = createApprovedApplication();
+        appAuditMissing.Approved_By__c = null;
+        update appAuditMissing;
+
+        Boolean auditThrown = false;
+        try {
+            LoanService.disburseApprovedApplication(appAuditMissing.Id, Date.today());
+        } catch (LoanService.InvalidLoanException ex) {
+            auditThrown = true;
+        }
+        System.assert(auditThrown, 'Missing Approved_By__c must be rejected');
+    }
 }
