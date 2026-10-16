@@ -1,7 +1,4 @@
 import { LightningElement, wire } from 'lwc';
-import Id from '@salesforce/user/Id';
-import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
-import NAME_FIELD from '@salesforce/schema/User.Name';
 
 import getDashboardMetrics from
     '@salesforce/apex/PFLoanOfficerDashboardController.getDashboardMetrics';
@@ -11,13 +8,9 @@ import getRecentApplications from
 import { refreshApex } from '@salesforce/apex';
 import { NavigationMixin } from 'lightning/navigation';
 
-const USER_FIELDS = [NAME_FIELD];
-
 export default class PfLoanOfficerDashboard extends NavigationMixin(
     LightningElement
 ) {
-    userId = Id;
-    userName = '';
     metrics = {
         totalApplications: 0,
         pendingReview: 0,
@@ -33,13 +26,6 @@ export default class PfLoanOfficerDashboard extends NavigationMixin(
 
     wiredMetricsResult;
     wiredApplicationsResult;
-
-    @wire(getRecord, { recordId: '$userId', fields: USER_FIELDS })
-    wiredUser({ data }) {
-        if (data) {
-            this.userName = getFieldValue(data, NAME_FIELD) || '';
-        }
-    }
 
     @wire(getDashboardMetrics)
     wiredMetrics(result) {
@@ -73,16 +59,11 @@ export default class PfLoanOfficerDashboard extends NavigationMixin(
     }
 
     get firstName() {
-        return this.userName.split(' ')[0] || 'there';
+        return 'Visitor';
     }
 
     get userInitials() {
-        return this.userName
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((part) => part.charAt(0).toUpperCase())
-            .join('') || 'PF';
+        return 'PF';
     }
 
     get visibleApplications() {
